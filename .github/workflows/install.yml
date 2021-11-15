@@ -114,6 +114,9 @@ jobs:
       - name: Install ocamlformat
         run: opam pin add ocamlformat.0.19.0-24-g2596a5c7 -k git https://github.com/danielmercier/ocamlformat.git#master
 
+      - name: Install utop
+        run: opam install utop -y
+
       - run: |
           sudo make install BUILD_MODE=opt
           # restore permissions after root build
