@@ -118,7 +118,7 @@ jobs:
         run: opam install utop -y
 
       - name: Test infer
-        run: make test -k
+        run: make test -k NDKBUILD=no
 
       - run: |
           sudo make install BUILD_MODE=opt
