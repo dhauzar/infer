@@ -12,10 +12,7 @@ module Allocsite : sig
     | Unknown
     | Symbol of Symb.SymbolPath.partial
     | Known of
-        { proc_name: string  (** the name of the procedure (builtin) which created the allocsite *)
-        ; caller_pname: Procname.t option
-              (** the name of the procedure for that the allocsite was created. That is, the
-                  procedure that called proc_name *)
+        { proc_name: string
         ; node_hash: int  (** hash of the node being allocated *)
         ; inst_num: int  (** order of the instruction in the node, i.e. n-th instruction *)
         ; dimension: int  (** depth of nested array *)
@@ -29,7 +26,6 @@ module Allocsite : sig
 
   val make :
        Procname.t
-    -> caller_pname:Procname.t option
     -> node_hash:int
     -> inst_num:int
     -> dimension:int
@@ -168,8 +164,6 @@ module PowLoc : sig
   (** It checks whether [rhs] is of [lhs.any_field], which is a heuristic for detecting a linked
       list, e.g. [x = x.next()]. It returns [Some lhs] if the condition is satisfied, [None]
       otherwise. *)
-
-  val cardinal : t -> int
 end
 
 val can_strong_update : PowLoc.t -> bool

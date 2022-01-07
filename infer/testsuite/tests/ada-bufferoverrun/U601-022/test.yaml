@@ -1,3 +1,0 @@
-driver: bufferoverrun
-files:
-- "reprod.adb"
