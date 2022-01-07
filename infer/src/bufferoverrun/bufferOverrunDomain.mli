@@ -55,8 +55,6 @@ module Val : sig
 
   val bot : t
 
-  val top : t
-
   val of_big_int : ItvThresholds.elt -> t
 
   val of_c_array_alloc :

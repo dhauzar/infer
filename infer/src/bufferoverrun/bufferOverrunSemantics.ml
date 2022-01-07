@@ -21,11 +21,6 @@ let eval_const : Typ.IntegerWidths.t -> Const.t -> Val.t =
       Val.of_big_int (IntLit.to_big_int intlit)
   | Const.Cstr s ->
       Val.of_literal_string integer_type_widths s
-  | Const.Cfun _ ->
-      (* Const.Cfun represents the address of a function call.
-         For now, return just non-null unknown pointer.
-         TODO: add the function to the func_ptrs field *)
-      {Val.top with itv= Itv.one}
   | _ ->
       Val.Itv.top
 
