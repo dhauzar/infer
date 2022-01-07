@@ -874,10 +874,7 @@ module MemPure = struct
         prev next
 
 
-  let is_rep_multi_loc l m =
-    Option.value_map (find_opt l m) ~f:MVal.get_rep_multi
-      ~default:(Loc.represents_multiple_values l)
-
+  let is_rep_multi_loc l m = Option.exists (find_opt l m) ~f:MVal.get_rep_multi
 
   (** Collect the location that was increased by one, i.e., [x -> x+1] *)
   let get_incr_locs m =
