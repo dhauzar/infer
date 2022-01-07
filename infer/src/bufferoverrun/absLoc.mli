@@ -27,8 +27,6 @@ module Allocsite : sig
 
   val unknown : t
 
-  val is_unknown : t -> bool
-
   val make :
        Procname.t
     -> caller_pname:Procname.t option
@@ -175,8 +173,6 @@ module PowLoc : sig
       otherwise. *)
 
   val cardinal : t -> int
-
-  val is_unknown : t -> bool
 end
 
 val can_strong_update : PowLoc.t -> bool

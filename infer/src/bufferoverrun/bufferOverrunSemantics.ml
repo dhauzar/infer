@@ -552,12 +552,7 @@ let eval_array_locs_length arr_locs mem =
 let eval_string_len exp mem = Mem.get_c_strlen (eval_locs exp mem) mem
 
 module Prune = struct
-  type t =
-    { prune_pairs: PrunePairs.t
-    ; complete: bool
-          (* True if the node associated with the prune is reachable iff prune_pairs are are
-             satisfiable (prune_pairs contain complete information about current path condition) *)
-    ; mem: Mem.t }
+  type t = {prune_pairs: PrunePairs.t; mem: Mem.t}
 
   let collection_length_of_iterator loc mem =
     let arr_locs =
@@ -573,7 +568,7 @@ module Prune = struct
     if AbsLoc.can_strong_update (PowLoc.singleton lv) then
       let prune_pairs = PrunePairs.add lv (PrunedVal.make v pruning_exp) prune_pairs in
       let mem = Mem.update_mem (PowLoc.singleton lv) v mem in
-      {prune_state with prune_pairs; mem}
+      {prune_pairs; mem}
     else prune_state
 
 
@@ -584,7 +579,7 @@ module Prune = struct
       if Val.is_bot length || Val.is_bot v then acc
       else
         let v' = prune_f v length in
-        update_mem_in_prune loc v' {acc with complete= Val.is_precise v}
+        update_mem_in_prune loc v' acc
     in
     let accum_pruned loc tgt acc =
       match tgt with
@@ -616,8 +611,7 @@ module Prune = struct
               Val.of_itv (Itv.of_normal_path ~unsigned:true linked_list_length)
               |> Val.prune_binop Le index_v
             in
-            update_mem_in_prune lv_linked_list_index pruned_v
-              {acc with complete= Val.is_precise index_v} ) )
+            update_mem_in_prune lv_linked_list_index pruned_v acc ) )
 
 
   let prune_iterator_offset_objc next_object mem acc =
@@ -631,7 +625,7 @@ module Prune = struct
               { iterator_v with
                 arrayblk= Val.get_array_blk iterator_v |> ArrayBlk.prune_offset_le_size }
             in
-            update_mem_in_prune iterator iterator_v' {acc with complete= Val.is_precise iterator_v}
+            update_mem_in_prune iterator iterator_v' acc
         | _ ->
             acc )
       tgts acc
@@ -642,36 +636,20 @@ module Prune = struct
     let pruned_val = Mem.find pruned_loc mem in
     let resulting_val = prune pruned_val in
     let mem = Mem.update_mem (PowLoc.singleton pruned_loc) resulting_val mem in
-    ( pruned_val
-    , resulting_val
-    , {astate with mem; complete= astate.complete && Val.is_precise pruned_val} )
+    (pruned_val, resulting_val, {astate with mem})
 
 
   let prune_unop : Exp.t -> t -> t =
    fun e ({mem} as astate) ->
     match e with
     | Exp.Var x ->
-        let astate =
-          match Mem.find_cpp_iterator_alias x astate.mem with
-          | None ->
-              astate
-          | Some (iter, iter_end) ->
-              let iter_loc = Loc.of_pvar iter in
-              let iter_end_loc = Loc.of_pvar iter_end in
-              let iter_v = Mem.find iter_loc astate.mem in
-              let size_v = Mem.find iter_end_loc astate.mem in
-              let iter_v' = Val.prune_binop Lt iter_v size_v in
-              update_mem_in_prune iter_loc iter_v' astate
-        in
         (* (1) prune the stack variable corresponding to x *)
         let v, v', astate = prune_stack_var x Val.prune_ne_zero astate in
         (* (2) prune heap variables which are aliases of the stack variable *)
         let accum_prune_var rhs tgt acc =
           match tgt with
           | AliasTarget.Simple {i} when IntLit.iszero i && not (Val.is_bot v) ->
-              let pruning_exp = PruningExp.make Binop.Ne ~lhs:v ~rhs:(Val.of_int 0) in
-              update_mem_in_prune rhs v' ~pruning_exp acc
-              |> prune_linked_list_index rhs mem
+              update_mem_in_prune rhs v' acc |> prune_linked_list_index rhs mem
               |> prune_iterator_offset_objc rhs mem
           | AliasTarget.Empty when not (Val.is_bot v) ->
               let v' = Val.prune_length_eq_zero v in
@@ -696,8 +674,7 @@ module Prune = struct
         let accum_prune_not_var rhs tgt acc =
           match tgt with
           | AliasTarget.Simple {i} when IntLit.iszero i && not (Val.is_bot v) ->
-              let pruning_exp = PruningExp.make Binop.Eq ~lhs:v ~rhs:(Val.of_int 0) in
-              update_mem_in_prune rhs v' ~pruning_exp acc
+              update_mem_in_prune rhs v' acc
           | AliasTarget.Empty ->
               let v = Mem.find rhs mem in
               if Val.is_bot v then acc
@@ -710,9 +687,6 @@ module Prune = struct
               acc
         in
         AliasTargets.fold accum_prune_not_var (Mem.find_alias_id x mem) astate
-    | Exp.UnOp _ ->
-        (* Prunning of this unary operation is not supported -> mark prune as incomplete *)
-        {astate with complete= false}
     | _ ->
         astate
 
@@ -756,7 +730,6 @@ module Prune = struct
     let prune_alias_core ~val_prune_eq ~val_prune_le:_ ~make_pruning_exp _location
         integer_type_widths x e ({mem} as astate) =
       let expr_val = eval integer_type_widths e mem in
-      let astate = {astate with complete= astate.complete && Val.is_precise expr_val} in
       (* (1) prune the stack variable corresponding to x *)
       let lhs, _, astate =
         prune_stack_var x (fun loc_val -> val_prune_eq loc_val expr_val) astate
@@ -845,9 +818,6 @@ module Prune = struct
              (Exp.BinOp (comp, e1, Exp.BinOp (Binop.PlusA t, e3, e2)))
         |> prune_binop_left location integer_type_widths
              (Exp.BinOp (comp_rev comp, e2, Exp.BinOp (Binop.MinusA t, e1, e3)))
-    | Exp.BinOp _ ->
-        (* Pruning of this binary operation is not supported -> mark prune as incomplete. *)
-        {astate with complete= false}
     | _ ->
         astate
 
@@ -859,20 +829,7 @@ module Prune = struct
       ->
         prune_binop_left location integer_type_widths (Exp.BinOp (comp_rev c, e2, e1)) astate
     | _ ->
-        (* Pruning of this binary operation is not supported -> mark prune as incomplete. *)
-        {astate with complete= false}
-
-
-  let prune_binop : Location.t -> Typ.IntegerWidths.t -> Exp.t -> t -> t =
-   fun location integer_type_widths e astate ->
-    let astate_left =
-      prune_binop_left location integer_type_widths e {astate with complete= true}
-    in
-    let astate_right = prune_binop_right location integer_type_widths e astate_left in
-    (* If either of the prune results in a complete prune, the entire prune  is complete.
-       The incompleteness on the other one is due to the fact that prune_bincomp_left is not
-       symmetric. *)
-    {astate_right with complete= astate.complete && (astate_left.complete || astate_right.complete)}
+        astate
 
 
   let prune_unreachable : Typ.IntegerWidths.t -> Exp.t -> t -> t =
@@ -898,19 +855,13 @@ module Prune = struct
 
 
   let rec prune_helper location integer_type_widths e astate =
-    (* Prune a state astate with an expression e producing a modified abstract state and
-       a map from locations being affected by the prune to their pruned values.
-       Note that when pruning a location "inp_loc "representing an input of a procedure,
-       the resulting pruing pair "inp_loc -> resulting_val" should be propagated to
-       caller of the procedure whenever possible. This is important in particular to
-       propagate reachability information of checks. Currently, a prune pair can be
-       propagated only if "resulting_val" is symbolic. This means that for a location which
-       has a symbolic value before the prune, a symbolic value should be produced after the
-       prune whenever possible.
-       Example: if e is "S Eq 0", and S has a symbolic value "S" before the prune, the
-         resulting value should be [max(0, S), min(0, S)] instead of [0, 0] because the latter
-         would disable the propagation of the prune pair. *)
-    let astate = prune_unreachable integer_type_widths e astate in
+    let astate =
+      astate
+      |> prune_unreachable integer_type_widths e
+      |> prune_unop e
+      |> prune_binop_left location integer_type_widths e
+      |> prune_binop_right location integer_type_widths e
+    in
     let is_const_zero x =
       match Exp.ignore_integer_cast x with
       | Exp.Const (Const.Cint i) ->
@@ -921,12 +872,8 @@ module Prune = struct
     match e with
     | Exp.BinOp (Binop.Ne, e1, e2) when is_const_zero e2 ->
         prune_helper location integer_type_widths e1 astate
-    | Exp.BinOp (Binop.Ne, e1, e2) when is_const_zero e1 ->
-        prune_helper location integer_type_widths e2 astate
     | Exp.BinOp (Binop.Eq, e1, e2) when is_const_zero e2 ->
         prune_helper location integer_type_widths (Exp.UnOp (Unop.LNot, e1, None)) astate
-    | Exp.BinOp (Binop.Eq, e1, e2) when is_const_zero e1 ->
-        prune_helper location integer_type_widths (Exp.UnOp (Unop.LNot, e2, None)) astate
     | Exp.UnOp (Unop.Neg, Exp.Var x, _) ->
         prune_helper location integer_type_widths (Exp.Var x) astate
     | Exp.BinOp (Binop.LAnd, e1, e2) ->
@@ -946,22 +893,25 @@ module Prune = struct
     | Exp.UnOp (Unop.LNot, Exp.BinOp ((Binop.Eq as c), e1, e2), _)
     | Exp.UnOp (Unop.LNot, Exp.BinOp ((Binop.Ne as c), e1, e2), _) ->
         prune_helper location integer_type_widths (Exp.BinOp (comp_not c, e1, e2)) astate
+    | Exp.Var ident -> (
+      match Mem.find_cpp_iterator_alias ident astate.mem with
+      | None ->
+          astate
+      | Some (iter, iter_end) ->
+          let iter_loc = Loc.of_pvar iter in
+          let iter_end_loc = Loc.of_pvar iter_end in
+          let iter_v = Mem.find iter_loc astate.mem in
+          let size_v = Mem.find iter_end_loc astate.mem in
+          let iter_v' = Val.prune_binop Lt iter_v size_v in
+          update_mem_in_prune iter_loc iter_v' astate )
     | _ ->
-        astate |> prune_unop e |> prune_binop location integer_type_widths e
+        astate
 
 
-  let prune : Location.t -> Typ.IntegerWidths.t -> Exp.t -> ?in_loop_head:bool -> Mem.t -> Mem.t =
-   fun location integer_type_widths e ?(in_loop_head = false) mem ->
+  let prune : Location.t -> Typ.IntegerWidths.t -> Exp.t -> Mem.t -> Mem.t =
+   fun location integer_type_widths e mem ->
     let mem, prune_pairs = Mem.apply_latest_prune e mem in
-    let latest_prune = Mem.get_latest_prune mem in
-    let {mem; complete; prune_pairs} =
-      prune_helper location integer_type_widths e {mem; complete= true; prune_pairs}
-    in
-    if PrunePairs.is_reachable prune_pairs then
-      Mem.set_latest_prune
-        (LatestPrune.mk_latest_prune
-           ~complete:(complete && LatestPrune.is_complete latest_prune)
-           ~in_loop_head ~previous_prune:latest_prune ~prune_pairs )
-        mem
+    let {mem; prune_pairs} = prune_helper location integer_type_widths e {mem; prune_pairs} in
+    if PrunePairs.is_reachable prune_pairs then Mem.set_prune_pairs prune_pairs mem
     else Mem.unreachable
 end
