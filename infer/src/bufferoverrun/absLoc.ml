@@ -460,8 +460,10 @@ module PowLoc = struct
         y
     | _, Bottom ->
         x
-    | Unknown, _ | _, Unknown ->
-        Unknown
+    | Unknown, _ ->
+        y
+    | _, Unknown ->
+        x
     | Known x, Known y ->
         mk_known (LocSet.union x y)
 
