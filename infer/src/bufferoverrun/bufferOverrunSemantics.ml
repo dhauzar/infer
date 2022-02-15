@@ -632,8 +632,11 @@ module Prune = struct
               update_mem_in_prune rhs v' acc |> prune_linked_list_index rhs mem
               |> prune_iterator_offset_objc rhs mem
           | AliasTarget.Empty when not (Val.is_bot v) ->
-              let v' = Val.prune_length_eq_zero v in
-              update_mem_in_prune rhs v' acc
+              let v_rhs = Mem.find rhs mem in
+              if Val.is_bot v then acc
+              else
+                let v' = Val.prune_length_eq_zero v_rhs in
+                update_mem_in_prune rhs v' acc
           | AliasTarget.Fgets ->
               let strlen_loc = Loc.of_c_strlen rhs in
               let v = Mem.find strlen_loc mem in
