@@ -716,7 +716,10 @@ module Prune = struct
       in
       (* (2) prune the heap variable which is an simple alias of the stack variable *)
       List.fold (Mem.find_simple_alias x mem) ~init:astate ~f:(fun acc (lv, i) ->
-          let rhs = if IntLit.iszero i then expr_val else Val.minus_a expr_val (Val.of_int_lit i) in
+          let rhs, lhs =
+            if IntLit.iszero i then (expr_val, lhs)
+            else (Val.minus_a expr_val (Val.of_int_lit i), Val.minus_a lhs (Val.of_int_lit i))
+          in
           if Val.is_bot lhs || Val.is_bot rhs then acc
           else
             let v = val_prune_eq lhs rhs in
