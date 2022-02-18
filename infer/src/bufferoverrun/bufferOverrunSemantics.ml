@@ -645,6 +645,8 @@ module Prune = struct
     let pruned_loc = Loc.of_id pruned_id in
     let pruned_val = Mem.find pruned_loc mem in
     let resulting_val = prune pruned_val in
+    L.d_printfln "prune_stack_var pruned_val=%a, is_precise=%b" Val.pp pruned_val
+      (Val.is_precise pruned_val) ;
     let mem = Mem.update_mem (PowLoc.singleton pruned_loc) resulting_val mem in
     ( pruned_val
     , resulting_val
@@ -921,6 +923,7 @@ module Prune = struct
          resulting value should be [max(0, S), min(0, S)] instead of [0, 0] because the latter
          would disable the propagation of the prune pair. *)
     let astate = prune_unreachable integer_type_widths e astate in
+    L.d_printfln "prune_helper e=%a" Exp.pp e ;
     let is_const_zero x =
       match Exp.ignore_integer_cast x with
       | Exp.Const (Const.Cint i) ->
@@ -967,6 +970,8 @@ module Prune = struct
     let {mem; complete; prune_pairs} =
       prune_helper location integer_type_widths e {mem; complete= true; prune_pairs}
     in
+    L.d_printfln "Complete after prune=%b" complete ;
+    L.d_printfln "LatestPrune.is_complete=%b" (LatestPrune.is_complete latest_prune) ;
     if PrunePairs.is_reachable prune_pairs then
       Mem.set_latest_prune
         (LatestPrune.mk_latest_prune

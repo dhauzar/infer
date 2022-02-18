@@ -2629,6 +2629,7 @@ module MemReach = struct
         | _, _ ->
             (latest_prune.prune, false)
       in
+      L.d_printfln "set_latest_prune unknown_constr_produced=%b" unknown_constr_produced ;
       { x with
         latest_prune=
           { complete= latest_prune.complete && not unknown_constr_produced
